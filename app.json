@@ -13,6 +13,12 @@
       "package": "com.joaoedulima.estacsaidaapp",
       "versionCode": 1
     },
-    "plugins": []
+    "plugins": [],
+    "extra": {
+      "eas": {
+        "projectId": "6e9289d0-3a04-4f47-a9c0-31f316f40183"
+      }
+    },
+    "owner": "joaoedulima"
   }
 }
