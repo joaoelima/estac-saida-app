@@ -1,17 +1,23 @@
-import axios from "axios";
-import * as SecureStore from "expo-secure-store";
-import { BASE_URL } from "../config/env";
+export const BASE_URL = "https://lavacar-bot.onrender.com";
 
-const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 15000,
-});
+export async function api(path, { method = "GET", headers, body } = {}) {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", ...(headers || {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
 
-// injeta token se existir
-api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync("token");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
-  return config;
-});
-
-export default api;
+  if (!res.ok) {
+    let msg = "Erro de rede";
+    try {
+      const data = await res.json();
+      msg = data?.message || msg;
+    } catch {}
+    throw new Error(msg);
+  }
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}

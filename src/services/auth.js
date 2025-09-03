@@ -1,26 +1,23 @@
-import * as SecureStore from "expo-secure-store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import api from "./api";
+import { api } from "./api";
+
+const USER_KEY = "@user";
 
 export async function login(email, senha) {
-  // ajuste a rota conforme o seu backend
-  const { data } = await api.post("/api/auth/login", { email, senha });
-  const token = data?.token;
-  const user = data?.user || data?.usuario || null;
+  const data = await api("/api/login", {
+    method: "POST",
+    body: { email, senha },
+  });
+  // backend já retorna { user: { id, nome, ... }, token? }
+  await AsyncStorage.setItem(USER_KEY, JSON.stringify(data?.user || data));
+  return data?.user || data;
+}
 
-  if (!token || !user) throw new Error("Credenciais inválidas");
-
-  await SecureStore.setItemAsync("token", token);
-  await AsyncStorage.setItem("@user", JSON.stringify(user));
-  return user;
+export async function getUser() {
+  const raw = await AsyncStorage.getItem(USER_KEY);
+  return raw ? JSON.parse(raw) : null;
 }
 
 export async function logout() {
-  await SecureStore.deleteItemAsync("token");
-  await AsyncStorage.removeItem("@user");
-}
-
-export async function getCurrentUser() {
-  const raw = await AsyncStorage.getItem("@user");
-  return raw ? JSON.parse(raw) : null;
+  await AsyncStorage.removeItem(USER_KEY);
 }

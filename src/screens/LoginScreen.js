@@ -1,13 +1,6 @@
 import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
-} from "react-native";
-import { login, getCurrentUser } from "../services/auth";
+import { View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
+import { login, getUser } from "../services/auth";
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
@@ -15,89 +8,78 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // se já logado, pula pro estacionamento
+    // Se já estiver logado, vai direto
     (async () => {
-      const u = await getCurrentUser();
-      if (u) navigation.replace("Parking");
+      const u = await getUser();
+      if (u?.id) navigation.replace("BuscaPlaca");
     })();
   }, []);
 
-  async function handleLogin() {
+  async function handleEntrar() {
+    if (!email || !senha)
+      return Alert.alert("Atenção", "Informe e-mail e senha.");
     try {
-      if (!email || !senha)
-        return Alert.alert("Atenção", "Informe e-mail e senha.");
       setLoading(true);
       await login(email.trim(), senha);
-      navigation.replace("Parking");
+      navigation.replace("BuscaPlaca");
     } catch (e) {
-      Alert.alert("Erro ao entrar", "Verifique suas credenciais.");
+      Alert.alert("Erro no login", e?.message || "Não foi possível entrar.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Saída • Estacionamento</Text>
+    <View style={{ flex: 1, padding: 24, justifyContent: "center" }}>
+      <Text style={{ fontSize: 26, fontWeight: "700", marginBottom: 24 }}>
+        Estac Saída
+      </Text>
 
+      <Text style={{ marginBottom: 6 }}>E-mail</Text>
       <TextInput
-        style={styles.input}
-        placeholder="E-mail"
         autoCapitalize="none"
         keyboardType="email-address"
         value={email}
         onChangeText={setEmail}
+        placeholder="seuemail@dominio.com"
+        style={{
+          borderWidth: 1,
+          borderColor: "#ccc",
+          borderRadius: 8,
+          padding: 12,
+          marginBottom: 14,
+        }}
       />
+
+      <Text style={{ marginBottom: 6 }}>Senha</Text>
       <TextInput
-        style={styles.input}
-        placeholder="Senha"
         secureTextEntry
         value={senha}
         onChangeText={setSenha}
+        placeholder="••••••••"
+        style={{
+          borderWidth: 1,
+          borderColor: "#ccc",
+          borderRadius: 8,
+          padding: 12,
+          marginBottom: 18,
+        }}
       />
 
       <TouchableOpacity
-        style={styles.btn}
-        onPress={handleLogin}
+        onPress={handleEntrar}
         disabled={loading}
+        style={{
+          backgroundColor: "#1976ed",
+          padding: 14,
+          borderRadius: 10,
+          alignItems: "center",
+        }}
       >
-        <Text style={styles.btnText}>{loading ? "Entrando..." : "Entrar"}</Text>
+        <Text style={{ color: "#fff", fontWeight: "700" }}>
+          {loading ? "Entrando..." : "Entrar"}
+        </Text>
       </TouchableOpacity>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f1f5f9",
-    padding: 20,
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 24,
-    textAlign: "center",
-    color: "#0f172a",
-  },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
-    backgroundColor: "#fff",
-    paddingHorizontal: 12,
-    marginBottom: 12,
-    fontSize: 16,
-  },
-  btn: {
-    height: 48,
-    backgroundColor: "#2563eb",
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 6,
-  },
-  btnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-});
