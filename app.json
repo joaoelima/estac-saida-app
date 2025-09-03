@@ -5,18 +5,14 @@
     "scheme": "estacsaida",
     "version": "1.0.0",
     "orientation": "portrait",
-    "splash": {
-      "backgroundColor": "#ffffff",
-      "resizeMode": "contain"
-    },
+    "splash": { "backgroundColor": "#ffffff", "resizeMode": "contain" },
     "android": {
       "package": "com.joaoedulima.estacsaidaapp",
       "versionCode": 1
     },
-    "plugins": [
-      "expo-secure-store"
-    ],
+    "plugins": ["expo-secure-store"],
     "extra": {
+      "apiUrl": "https://lavacar-bot.onrender.com",
       "eas": {
         "projectId": "6e9289d0-3a04-4f47-a9c0-31f316f40183"
       }

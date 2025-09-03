@@ -1,3 +1,11 @@
+import axios from "axios";
+import { API_URL } from "../config/env";
+
+export const api = axios.create({
+  baseURL: API_URL,
+  timeout: 15000,
+});
+
 export const BASE_URL = "https://lavacar-bot.onrender.com";
 
 export async function api(path, { method = "GET", headers, body } = {}) {
