@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "Estac Saída",
+    "slug": "estac-saida-app",
+    "scheme": "estacsaida",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "splash": {
+      "backgroundColor": "#ffffff",
+      "resizeMode": "contain"
+    },
+    "android": {
+      "package": "com.joaoedulima.estacsaidaapp",
+      "versionCode": 1
+    },
+    "plugins": []
+  }
+}
