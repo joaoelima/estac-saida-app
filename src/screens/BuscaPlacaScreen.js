@@ -1,4 +1,4 @@
-// src/screens/Estacionamento/BuscarPlacaScreen.jsx
+// screens/BuscaPlacaScreen.js
 import React, { useState } from "react";
 import {
   View,
@@ -10,10 +10,6 @@ import {
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { api } from "../services/api";
-import { USER_ID } from "../config/env";
-
-const url = `/api/estacionamento/por-placa?placa=${placa.toUpperCase()}&user_id=${USER_ID}`;
-const { data } = await api.get(url);
 
 function normalizaPlaca(txt = "") {
   return String(txt)
@@ -21,7 +17,7 @@ function normalizaPlaca(txt = "") {
     .replace(/[^A-Z0-9]/g, "");
 }
 
-export default function BuscarPlacaScreen({ navigation }) {
+export default function BuscaPlacaScreen({ navigation }) {
   const [placa, setPlaca] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -34,25 +30,21 @@ export default function BuscarPlacaScreen({ navigation }) {
 
     setLoading(true);
     try {
-      // ⚠️ obtenha o user_id salvo no login
-      // se ainda não estiver salvando, use temporariamente o ID fixo do seu usuário:
-      // const userId = "6889c4a922ac1c1fa33365b4";
+      // user_id salvo no login; se não houver, usa o fixo do seu usuário
       const userId =
         (await SecureStore.getItemAsync("user_id")) ||
         "6889c4a922ac1c1fa33365b4";
 
-      const ticket = await apiGet("/api/estacionamento/por-placa", {
-        placa: p,
-        user_id: userId,
-      });
+      const ticket = await api.get(
+        `/api/estacionamento/por-placa?placa=${p}&user_id=${userId}`
+      );
 
-      // Navega para tela de fechamento passando o ticket
-      navigation.navigate("FechamentoEstacionamento", { ticket });
+      // Envia o ticket inteiro pra tela de saída
+      navigation.navigate("SaidaScreen", { ticket });
     } catch (err) {
       if (err.status === 404) {
         Alert.alert("Não encontrado", "Nenhum ticket aberto para esta placa.");
       } else {
-        // aqui entram erros de rede, DNS, SSL, CORS, etc.
         Alert.alert("Erro de rede", String(err.message || err));
       }
     } finally {
