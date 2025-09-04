@@ -1,3 +1,4 @@
+// src/services/auth.js
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
 
@@ -8,7 +9,6 @@ export async function login(email, senha) {
     method: "POST",
     body: { email, senha },
   });
-  // backend já retorna { user: { id, nome, ... }, token? }
   await AsyncStorage.setItem(USER_KEY, JSON.stringify(data?.user || data));
   return data?.user || data;
 }

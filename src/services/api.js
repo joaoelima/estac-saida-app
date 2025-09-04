@@ -1,7 +1,8 @@
-// services/api.js
+// src/services/api.js
 export const BASE_URL = "https://lavacar-bot.onrender.com";
 
-async function request(path, { method = "GET", headers, body } = {}) {
+// chamada genérica
+export async function api(path, { method = "GET", headers, body } = {}) {
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: { "Content-Type": "application/json", ...(headers || {}) },
@@ -9,30 +10,54 @@ async function request(path, { method = "GET", headers, body } = {}) {
   });
 
   const text = await res.text();
-  let json;
+  let data;
   try {
-    json = text ? JSON.parse(text) : null;
+    data = text ? JSON.parse(text) : null;
   } catch (_) {
-    json = null;
+    data = text;
   }
 
   if (!res.ok) {
-    const message =
-      (json && (json.error || json.message)) || `HTTP ${res.status}`;
-    const err = new Error(message);
-    err.status = res.status;
-    err.body = json || text;
-    throw err;
+    const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
+    throw new Error(msg);
   }
-  return json;
+  return data;
 }
 
-// Um único objeto `api` – sem duplicar nomes
-export const api = {
-  get: (path) => request(path),
-  post: (path, body) => request(path, { method: "POST", body }),
-  patch: (path, body) => request(path, { method: "PATCH", body }),
-  del: (path, body) => request(path, { method: "DELETE", body }),
+// --- helpers ---
+export const apiGet = (path, params = {}) => {
+  const qs = Object.entries(params)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join("&");
+  return api(`${path}${qs ? `?${qs}` : ""}`);
 };
 
-export default api;
+export const USER_ID = "6889c4a922ac1c1fa33365b4";
+
+// serviços específicos do Estacionamento
+export const estacionamentos = {
+  async getByPlaca(placa) {
+    const p = String(placa)
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    return apiGet(`/api/estacionamento/por-placa`, {
+      placa: p,
+      user_id: USER_ID,
+    });
+  },
+
+  async getAbertos() {
+    return apiGet(`/api/estacionamento/abertos`, { user_id: USER_ID });
+  },
+
+  async fechar(idTicket, { forma_pagamento, convenio_id } = {}) {
+    return api(`/api/estacionamento/${idTicket}/saida`, {
+      method: "PATCH",
+      body: {
+        user_id: USER_ID,
+        forma_pagamento,
+        ...(convenio_id ? { convenio_id } : {}), // <- spread CORRETO
+      },
+    });
+  },
+};
