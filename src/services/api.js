@@ -1,5 +1,5 @@
 // src/services/api.js
-import { BASE_URL } from "../env";
+import { BASE_URL } from "../config/env";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as SecureStore from "expo-secure-store";
 
