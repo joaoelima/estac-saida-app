@@ -8,16 +8,16 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import * as SecureStore from "expo-secure-store";
-import { apiGet } from "../services/api"; // <- caminho e helper corretos
+import { estacionamentos } from "../services/api";
 
 function normalizaPlaca(txt = "") {
   return String(txt)
     .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
 }
 
-export default function BuscarPlacaScreen({ navigation }) {
+export default function BuscaPlacaScreen({ navigation }) {
   const [placa, setPlaca] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -30,21 +30,15 @@ export default function BuscarPlacaScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const userId =
-        (await SecureStore.getItemAsync("user_id")) ||
-        "6889c4a922ac1c1fa33365b4";
-
-      const ticket = await apiGet("/api/estacionamento/por-placa", {
-        placa: p,
-        user_id: userId,
-      });
-
-      navigation.navigate("FechamentoEstacionamento", { ticket });
+      const ticket = await estacionamentos.getByPlaca(p);
+      // NOME DA ROTA EXISTENTE NO App.js
+      navigation.navigate("Saida", { ticket });
     } catch (err) {
-      if (err.status === 404) {
+      const msg = String(err?.message || err || "");
+      if (msg.includes("404") || msg.toLowerCase().includes("não encontrado")) {
         Alert.alert("Não encontrado", "Nenhum ticket aberto para esta placa.");
       } else {
-        Alert.alert("Erro de rede", String(err.message || err));
+        Alert.alert("Erro", msg);
       }
     } finally {
       setLoading(false);
@@ -56,6 +50,7 @@ export default function BuscarPlacaScreen({ navigation }) {
       <Text style={{ fontSize: 22, fontWeight: "700", marginBottom: 16 }}>
         Estacionamento
       </Text>
+
       <Text style={{ fontSize: 16, marginBottom: 8 }}>Buscar Placa</Text>
 
       <TextInput
@@ -87,7 +82,7 @@ export default function BuscarPlacaScreen({ navigation }) {
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}>
+          <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>
             Continuar
           </Text>
         )}

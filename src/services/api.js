@@ -1,5 +1,7 @@
 // src/services/api.js
-export const BASE_URL = "https://lavacar-bot.onrender.com";
+import { BASE_URL } from "../env";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 // chamada genérica
 export async function api(path, { method = "GET", headers, body } = {}) {
@@ -19,7 +21,12 @@ export async function api(path, { method = "GET", headers, body } = {}) {
 
   if (!res.ok) {
     const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
-    throw new Error(msg);
+    const err = new Error(msg);
+    // anexa status quando possível
+    try {
+      err.status = res.status;
+    } catch {}
+    throw err;
   }
   return data;
 }
@@ -32,32 +39,50 @@ export const apiGet = (path, params = {}) => {
   return api(`${path}${qs ? `?${qs}` : ""}`);
 };
 
-export const USER_ID = "6889c4a922ac1c1fa33365b4";
+async function getUserIdInternal() {
+  try {
+    const sid = await SecureStore.getItemAsync("user_id");
+    if (sid) return sid;
+  } catch {}
+  try {
+    const raw = await AsyncStorage.getItem("@user");
+    if (raw) {
+      const u = JSON.parse(raw);
+      return u?.user?.id || u?.id || null;
+    }
+  } catch {}
+  return null;
+}
 
-// serviços específicos do Estacionamento
+// Serviços específicos do Estacionamento
 export const estacionamentos = {
   async getByPlaca(placa) {
+    const user_id = await getUserIdInternal();
+    if (!user_id) throw new Error("Usuário não identificado.");
     const p = String(placa)
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "");
-    return apiGet(`/api/estacionamento/por-placa`, {
-      placa: p,
-      user_id: USER_ID,
-    });
+    return apiGet(`/api/estacionamento/por-placa`, { placa: p, user_id });
   },
 
   async getAbertos() {
-    return apiGet(`/api/estacionamento/abertos`, { user_id: USER_ID });
+    const user_id = await getUserIdInternal();
+    if (!user_id) throw new Error("Usuário não identificado.");
+    return apiGet(`/api/estacionamento/abertos`, { user_id });
   },
 
   async fechar(idTicket, { forma_pagamento, convenio_id } = {}) {
+    const user_id = await getUserIdInternal();
+    if (!user_id) throw new Error("Usuário não identificado.");
     return api(`/api/estacionamento/${idTicket}/saida`, {
       method: "PATCH",
       body: {
-        user_id: USER_ID,
+        user_id,
         forma_pagamento,
-        ...(convenio_id ? { convenio_id } : {}), // <- spread CORRETO
+        ...(convenio_id ? { convenio_id } : {}),
       },
     });
   },
 };
+
+export { BASE_URL };

@@ -1,6 +1,7 @@
+// src/components/PlateInput.js
 import React from "react";
 import { View, TextInput, StyleSheet } from "react-native";
-import { normalizePlate } from "../config/env";
+import { normalizePlate } from "../env";
 
 export default function PlateInput({ value, onChangeText, style, ...rest }) {
   return (

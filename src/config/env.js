@@ -1,8 +1,8 @@
-// Ajuste ESTA URL para o seu backend (Render/Heroku/etc.)
+// src/env.js
+// URL do backend (Render)
 export const BASE_URL = "https://lavacar-bot.onrender.com";
-export const USER_ID = "6889c4a922ac1c1fa33365b4";
 
-// Tempo (ms) entre revalidações simples de status de placa, quando exibindo contagem
+// Intervalo (ms) para polling quando necessário
 export const POLLING_MS = 10_000;
 
 // Normalizador simples de placa
