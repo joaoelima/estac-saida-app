@@ -7,8 +7,11 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
+  Platform,
 } from "react-native";
 import { api, apiGet, getUserId } from "../services/api";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 
 function diffMinutos(inicioISO, fim = new Date()) {
   const ini = new Date(inicioISO);
@@ -25,6 +28,9 @@ export default function SaidaScreen({ route, navigation }) {
   const [convenioId, setConvenioId] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("pix");
   const [descontoExtra, setDescontoExtra] = useState("0");
+
+  // dados retornados do backend após fechar (para usar no recibo)
+  const [fechamento, setFechamento] = useState(null);
 
   // carrega convênios do usuário
   useEffect(() => {
@@ -84,7 +90,6 @@ export default function SaidaScreen({ route, navigation }) {
         return;
       }
 
-      // Backend aceita: forma_pagamento e opcional convenio_id
       const resp = await api(`/api/estacionamento/${ticket?._id}/saida`, {
         method: "PATCH",
         body: {
@@ -94,6 +99,8 @@ export default function SaidaScreen({ route, navigation }) {
         },
       });
 
+      setFechamento(resp?.ticket || null);
+
       const min = resp?.ticket?.minutos_total ?? minutos;
       const val = resp?.ticket?.valor_final ?? total;
 
@@ -102,16 +109,146 @@ export default function SaidaScreen({ route, navigation }) {
         `Minutos: ${min}\nValor: R$ ${Number(val).toFixed(2)}`
       );
 
-      // ⚠️ Troca o popToTop() (nem sempre existe) por navegação segura:
+      // volta para a busca mantendo esta tela no histórico (para gerar PDF se quiser)
       navigation.reset({
         index: 0,
         routes: [{ name: "BuscaPlaca" }],
       });
     } catch (e) {
-      // Mostra a mensagem real do erro
       Alert.alert("Erro", e?.message || "Não foi possível finalizar a saída.");
     } finally {
       setFechando(false);
+    }
+  }
+
+  function formatBRL(v) {
+    return `R$ ${Number(v || 0).toFixed(2)}`;
+  }
+
+  function horaBR(date) {
+    if (!date) return "-";
+    const d = new Date(date);
+    return d.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  function dataHoraBR(date) {
+    if (!date) return "-";
+    const d = new Date(date);
+    return d.toLocaleString("pt-BR");
+  }
+
+  async function gerarComprovante() {
+    try {
+      // dados do ticket (se já fechou usamos os oficiais do backend)
+      const t = fechamento || ticket;
+
+      const entrada = t?.hora_entrada;
+      const saida = fechamento?.hora_saida || new Date().toISOString();
+
+      const minutosCalc = fechamento?.minutos_total ?? minutos;
+      const tarifaCalc = Number(t?.tarifa_por_minuto || tarifa);
+      const subtotalCalc = Number((minutosCalc * tarifaCalc).toFixed(2));
+
+      const convenioNome =
+        fechamento?.convenio_aplicado?.nome || (conv ? conv.nome : "Nenhum");
+
+      const descontoPct =
+        fechamento?.convenio_aplicado?.desconto_percentual ??
+        Number(conv?.desconto_percentual || 0);
+
+      const descontoConvCalc = Number(
+        ((subtotalCalc * descontoPct) / 100).toFixed(2)
+      );
+      const descontoExtraCalc = descExtraNum; // apenas local (backend atual não recebe)
+
+      const totalCalc =
+        fechamento?.valor_final ??
+        Math.max(
+          0,
+          Number(
+            (subtotalCalc - descontoConvCalc - descontoExtraCalc).toFixed(2)
+          )
+        );
+
+      const formaPg = fechamento?.forma_pagamento || formaPagamento || "-";
+
+      const html = `
+      <html>
+      <head>
+        <meta charset="utf-8" />
+        <style>
+          * { font-family: Arial, Helvetica, sans-serif; }
+          .wrap { width: 320px; margin: 0 auto; color: #111; }
+          .title { text-align:center; margin: 4px 0 10px; }
+          .row { margin: 6px 0; font-size: 13px; }
+          .block { background: #f7f9fc; padding: 10px; border-radius: 8px; margin-top: 8px; }
+          .total { font-size: 16px; font-weight: 700; margin-top: 6px; }
+          hr { border: none; border-top: 1px solid #ddd; margin: 8px 0; }
+          .muted { font-size: 11px; text-align:center; margin-top: 6px; color: #444; }
+        </style>
+      </head>
+      <body>
+        <div class="wrap">
+          <h3 class="title">COMPROVANTE DE ESTACIONAMENTO</h3>
+          <div class="row"><b>Placa:</b> ${t?.placa || "-"}</div>
+          <div class="row"><b>Modelo:</b> ${t?.modelo || "-"}</div>
+          <div class="row"><b>Entrada:</b> ${dataHoraBR(entrada)}</div>
+          <div class="row"><b>Saída:</b> ${dataHoraBR(saida)}</div>
+          <div class="row"><b>Permanência:</b> ${minutosCalc} min</div>
+          <div class="row"><b>Tarifa:</b> ${formatBRL(tarifaCalc)} / min</div>
+          <hr/>
+          <div class="block">
+            <div class="row"><b>Subtotal:</b> ${formatBRL(subtotalCalc)}</div>
+            <div class="row"><b>Convênio:</b> ${convenioNome}${
+        descontoPct ? ` (${descontoPct}% off)` : ""
+      }</div>
+            <div class="row"><b>Desconto convênio:</b> ${formatBRL(
+              descontoConvCalc
+            )}</div>
+            <div class="row"><b>Desconto extra:</b> ${formatBRL(
+              descontoExtraCalc
+            )}</div>
+            <div class="total">Total pago: ${formatBRL(totalCalc)}</div>
+            <div class="row"><b>Forma de pagamento:</b> ${formaPg}</div>
+          </div>
+          <hr/>
+          <div class="muted">Gerado em ${dataHoraBR(new Date())}</div>
+        </div>
+      </body>
+      </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({
+        html,
+        base64: false,
+      });
+
+      // Compartilhar / enviar
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, {
+          dialogTitle: "Compartilhar comprovante",
+          mimeType: "application/pdf",
+          UTI: "com.adobe.pdf",
+        });
+      } else {
+        // iOS sem Sharing disponível: abre o print nativo como fallback
+        if (Platform.OS === "ios") {
+          await Print.printAsync({ html });
+        } else {
+          Alert.alert(
+            "Comprovante gerado",
+            `Arquivo salvo em:\n${uri}\nCompartilhamento não disponível neste dispositivo.`
+          );
+        }
+      }
+    } catch (e) {
+      Alert.alert(
+        "Erro",
+        e?.message || "Não foi possível gerar o comprovante."
+      );
     }
   }
 
@@ -143,17 +280,17 @@ export default function SaidaScreen({ route, navigation }) {
         }}
       >
         <Text>Tarifa (R$/min): {tarifa.toFixed(2)}</Text>
-        <Text>Subtotal: R$ {subtotal.toFixed(2)}</Text>
+        <Text>Subtotal: {formatBRL(subtotal)}</Text>
         <Text>
           Convênio:{" "}
           {conv
             ? `${conv.nome} (${Number(conv.desconto_percentual)}% off)`
             : "Nenhum"}
         </Text>
-        <Text>Desconto convênio: R$ {descConv.toFixed(2)}</Text>
-        <Text>Desconto extra: R$ {descExtraNum.toFixed(2)}</Text>
+        <Text>Desconto convênio: {formatBRL(descConv)}</Text>
+        <Text>Desconto extra: {formatBRL(descExtraNum)}</Text>
         <Text style={{ marginTop: 6, fontSize: 18, fontWeight: "700" }}>
-          Total a pagar: R$ {total.toFixed(2)}
+          Total a pagar: {formatBRL(total)}
         </Text>
       </View>
 
@@ -170,7 +307,6 @@ export default function SaidaScreen({ route, navigation }) {
             marginBottom: 12,
           }}
         >
-          {/* Select simples sem lib (lista clicável) */}
           <TouchableOpacity
             onPress={() => setConvenioId("")}
             style={{
@@ -221,6 +357,7 @@ export default function SaidaScreen({ route, navigation }) {
               borderWidth: 1,
               borderColor: "#ccc",
               backgroundColor: formaPagamento === fp ? "#1976ed" : "#fff",
+              marginRight: 8,
             }}
           >
             <Text
@@ -254,24 +391,42 @@ export default function SaidaScreen({ route, navigation }) {
       />
 
       <Text style={{ fontSize: 22, fontWeight: "700", marginVertical: 14 }}>
-        Valor parcial: R$ {subtotal.toFixed(2)}
+        Valor parcial: {formatBRL(subtotal)}
       </Text>
 
-      <TouchableOpacity
-        onPress={handleFechar}
-        disabled={fechando}
-        style={{
-          backgroundColor: "#1976ed",
-          padding: 14,
-          borderRadius: 10,
-          alignItems: "center",
-          opacity: fechando ? 0.7 : 1,
-        }}
-      >
-        <Text style={{ color: "#fff", fontWeight: "700" }}>
-          {fechando ? "Finalizando..." : "Finalizar Saída"}
-        </Text>
-      </TouchableOpacity>
+      <View style={{ flexDirection: "row", gap: 12 }}>
+        <TouchableOpacity
+          onPress={gerarComprovante}
+          style={{
+            flex: 1,
+            backgroundColor: "#1b2330",
+            padding: 14,
+            borderRadius: 10,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>
+            Gerar Comprovante (PDF)
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={handleFechar}
+          disabled={fechando}
+          style={{
+            flex: 1,
+            backgroundColor: "#1976ed",
+            padding: 14,
+            borderRadius: 10,
+            alignItems: "center",
+            opacity: fechando ? 0.7 : 1,
+          }}
+        >
+          <Text style={{ color: "#fff", fontWeight: "700" }}>
+            {fechando ? "Finalizando..." : "Finalizar Saída"}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }
