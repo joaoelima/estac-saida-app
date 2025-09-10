@@ -1,7 +1,6 @@
 // src/services/api.js
 import { BASE_URL } from "../config/env";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as SecureStore from "expo-secure-store";
 
 // chamada genérica
 export async function api(path, { method = "GET", headers, body } = {}) {
@@ -15,14 +14,13 @@ export async function api(path, { method = "GET", headers, body } = {}) {
   let data;
   try {
     data = text ? JSON.parse(text) : null;
-  } catch (_) {
+  } catch {
     data = text;
   }
 
   if (!res.ok) {
     const msg = (data && (data.error || data.message)) || `HTTP ${res.status}`;
     const err = new Error(msg);
-    // anexa status quando possível
     try {
       err.status = res.status;
     } catch {}
@@ -31,7 +29,7 @@ export async function api(path, { method = "GET", headers, body } = {}) {
   return data;
 }
 
-// --- helpers ---
+// GET com querystring
 export const apiGet = (path, params = {}) => {
   const qs = Object.entries(params)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
@@ -39,25 +37,22 @@ export const apiGet = (path, params = {}) => {
   return api(`${path}${qs ? `?${qs}` : ""}`);
 };
 
-async function getUserIdInternal() {
+// pega o user_id salvo pelo login
+export async function getUserId() {
+  const raw = await AsyncStorage.getItem("@user");
+  if (!raw) return null;
   try {
-    const sid = await SecureStore.getItemAsync("user_id");
-    if (sid) return sid;
-  } catch {}
-  try {
-    const raw = await AsyncStorage.getItem("@user");
-    if (raw) {
-      const u = JSON.parse(raw);
-      return u?.user?.id || u?.id || null;
-    }
-  } catch {}
-  return null;
+    const obj = JSON.parse(raw);
+    return obj?.user?.id || obj?.id || null;
+  } catch {
+    return null;
+  }
 }
 
-// Serviços específicos do Estacionamento
+// Serviços específicos do Estacionamento (se quiser usar via import)
 export const estacionamentos = {
   async getByPlaca(placa) {
-    const user_id = await getUserIdInternal();
+    const user_id = await getUserId();
     if (!user_id) throw new Error("Usuário não identificado.");
     const p = String(placa)
       .toUpperCase()
@@ -66,13 +61,13 @@ export const estacionamentos = {
   },
 
   async getAbertos() {
-    const user_id = await getUserIdInternal();
+    const user_id = await getUserId();
     if (!user_id) throw new Error("Usuário não identificado.");
     return apiGet(`/api/estacionamento/abertos`, { user_id });
   },
 
   async fechar(idTicket, { forma_pagamento, convenio_id } = {}) {
-    const user_id = await getUserIdInternal();
+    const user_id = await getUserId();
     if (!user_id) throw new Error("Usuário não identificado.");
     return api(`/api/estacionamento/${idTicket}/saida`, {
       method: "PATCH",
@@ -84,5 +79,3 @@ export const estacionamentos = {
     });
   },
 };
-
-export { BASE_URL };

@@ -1,8 +1,7 @@
-// screens/SaidaScreen.js
+// src/screens/SaidaScreen.js
 import React, { useMemo, useState } from "react";
 import { View, Text, TouchableOpacity, Alert } from "react-native";
-import * as SecureStore from "expo-secure-store";
-import { api } from "../services/api";
+import { api, getUserId } from "../services/api";
 
 function diffMinutos(inicioISO, fim = new Date()) {
   const ini = new Date(inicioISO);
@@ -15,7 +14,7 @@ export default function SaidaScreen({ route, navigation }) {
   const [fechando, setFechando] = useState(false);
 
   const minutos = useMemo(
-    () => diffMinutos(ticket?.hora_entrada),
+    () => (ticket?.hora_entrada ? diffMinutos(ticket.hora_entrada) : 0),
     [ticket?.hora_entrada]
   );
 
@@ -27,21 +26,23 @@ export default function SaidaScreen({ route, navigation }) {
   async function handleFechar() {
     try {
       setFechando(true);
-      const userId =
-        (await SecureStore.getItemAsync("user_id")) ||
-        "6889c4a922ac1c1fa33365b4";
 
-      // Forma de pagamento fixa só pra testar (troque por seleção na UI)
+      const userId = await getUserId();
+      if (!userId) {
+        Alert.alert("Erro", "Usuário não identificado.");
+        return;
+      }
+
+      // Forma de pagamento (ajuste depois para seleção na UI)
       const forma_pagamento = "pix";
 
-      const closed = await api.patch(
-        `/api/estacionamento/${ticket._id}/saida`,
-        {
+      const closed = await api(`/api/estacionamento/${ticket?._id}/saida`, {
+        method: "PATCH",
+        body: {
           user_id: userId,
           forma_pagamento,
-          // convenio_id: ... (adicione se selecionar convênio)
-        }
-      );
+        },
+      });
 
       Alert.alert(
         "OK",
@@ -58,14 +59,18 @@ export default function SaidaScreen({ route, navigation }) {
   }
 
   return (
-    <View style={{ flex: 1, padding: 24 }}>
-      <Text style={{ fontSize: 18, marginBottom: 6 }}>
+    <View style={{ flex: 1, padding: 20, backgroundColor: "#fff" }}>
+      <Text style={{ fontSize: 22, fontWeight: "700", marginBottom: 16 }}>
+        Fechar Saída
+      </Text>
+
+      <Text style={{ marginBottom: 6 }}>
         Placa: <Text style={{ fontWeight: "700" }}>{ticket?.placa || "-"}</Text>
       </Text>
       <Text style={{ marginBottom: 6 }}>
         Entrada:{" "}
         {ticket?.hora_entrada
-          ? new Date(ticket.hora_entrada).toLocaleString()
+          ? new Date(ticket.hora_entrada).toLocaleString("pt-BR")
           : "-"}
       </Text>
       <Text style={{ marginBottom: 6 }}>Permanência: {minutos} min</Text>
