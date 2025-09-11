@@ -13,14 +13,27 @@ import { api, apiGet, getUserId } from "../services/api";
 import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 
+/** Fallback: calcula minutos entre a hora_entrada e agora, arredondando pra cima */
 function diffMinutos(inicioISO, fim = new Date()) {
   const ini = new Date(inicioISO);
   return Math.max(1, Math.ceil((fim - ini) / 60000));
 }
 
+/** Formata currency PT-BR */
+function formatBRL(n) {
+  return `R$ ${(Number(n) || 0).toFixed(2)}`;
+}
+
+/** Helpers de data/hora */
+function dataHoraBR(date) {
+  if (!date) return "-";
+  const d = new Date(date);
+  return d.toLocaleString("pt-BR");
+}
+
 export default function SaidaScreen({ route, navigation }) {
   const { ticket } = route.params || {};
-  const [loading, setLoading] = useState(false);
+  const [loadingInit, setLoadingInit] = useState(true);
   const [fechando, setFechando] = useState(false);
 
   // convênios & forma de pagamento
@@ -32,71 +45,129 @@ export default function SaidaScreen({ route, navigation }) {
   // dados retornados do backend após fechar (para usar no recibo)
   const [fechamento, setFechamento] = useState(null);
 
-  // carrega convênios do usuário
+  // resumo de cobrança vindo do backend (com a regra atual)
+  const [resumo, setResumo] = useState(null);
+  const [carregandoResumo, setCarregandoResumo] = useState(false);
+  const [erroResumo, setErroResumo] = useState("");
+
+  /** Carrega convênios e primeiro resumo */
   useEffect(() => {
     (async () => {
       try {
-        setLoading(true);
+        setLoadingInit(true);
         const user_id = await getUserId();
         if (!user_id) return;
+
+        // Carregar convênios
         const lista = await apiGet("/api/convenios", { user_id });
         setConvenios(Array.isArray(lista) ? lista : []);
+
+        // Carregar resumo inicial (sem convênio selecionado)
+        await carregarResumo(user_id, ticket?._id, "");
       } catch {
         setConvenios([]);
       } finally {
-        setLoading(false);
+        setLoadingInit(false);
       }
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?._id]);
 
-  const minutos = useMemo(
+  /** Recarrega resumo quando trocar de convênio */
+  useEffect(() => {
+    (async () => {
+      const user_id = await getUserId();
+      if (!user_id || !ticket?._id) return;
+      await carregarResumo(user_id, ticket._id, convenioId);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [convenioId]);
+
+  /** Chama o endpoint de resumo no backend */
+  async function carregarResumo(user_id, ticketId, convId) {
+    if (!ticketId) return;
+    setCarregandoResumo(true);
+    setErroResumo("");
+    try {
+      const qs = new URLSearchParams({
+        user_id,
+        ...(convId ? { convenio_id: convId } : {}),
+      }).toString();
+
+      // GET /api/estacionamento/:id/resumo?user_id=...&convenio_id=...
+      const data = await apiGet(`/api/estacionamento/${ticketId}/resumo`, qs);
+      // Esperado: { minutos, tarifa_label, modo, subtotal, desconto_convenio, total_sugerido }
+      setResumo(data || null);
+    } catch (e) {
+      // Se o backend ainda não tiver o endpoint, mantemos resumo=null e usamos fallback
+      setResumo(null);
+      setErroResumo(
+        "Não foi possível carregar o resumo automático. Usando cálculo simples por minuto (fallback)."
+      );
+    } finally {
+      setCarregandoResumo(false);
+    }
+  }
+
+  /** Fallback/cálculo local */
+  const minutosFallback = useMemo(
     () => (ticket?.hora_entrada ? diffMinutos(ticket.hora_entrada) : 0),
     [ticket?.hora_entrada]
   );
-
-  const tarifa = Number(ticket?.tarifa_por_minuto || 0);
-  const subtotal = useMemo(
-    () => Number((minutos * tarifa).toFixed(2)),
-    [minutos, tarifa]
+  const tarifaMin = Number(ticket?.tarifa_por_minuto || 0);
+  const subtotalFallback = useMemo(
+    () => Number((minutosFallback * tarifaMin).toFixed(2)),
+    [minutosFallback, tarifaMin]
   );
 
-  const conv = useMemo(
+  /** Convênio selecionado (para exibir no card) */
+  const convSel = useMemo(
     () => convenios.find((c) => String(c._id) === String(convenioId)),
     [convenios, convenioId]
   );
 
-  const descConv = useMemo(() => {
-    const pct = Number(conv?.desconto_percentual || 0);
-    return Number(((subtotal * pct) / 100).toFixed(2));
-  }, [subtotal, conv]);
-
+  /** Descontos */
   const descExtraNum = useMemo(
     () => Number(descontoExtra || 0),
     [descontoExtra]
   );
 
-  const total = useMemo(
-    () => Math.max(0, Number((subtotal - descConv - descExtraNum).toFixed(2))),
-    [subtotal, descConv, descExtraNum]
-  );
+  /** Valores a exibir (preferindo o resumo do backend; fallback se não houver) */
+  const minutos = resumo?.minutos ?? minutosFallback;
+  const tarifaLabel =
+    resumo?.tarifa_label ??
+    (tarifaMin > 0 ? `${formatBRL(tarifaMin)} / min` : "-");
+  const subtotal = resumo?.subtotal ?? subtotalFallback;
+  const descontoConvenio =
+    resumo?.desconto_convenio ??
+    (() => {
+      const pct = Number(convSel?.desconto_percentual || 0);
+      return Number(((subtotalFallback * pct) / 100).toFixed(2));
+    })();
+  const totalBase =
+    resumo?.total_sugerido ?? Number((subtotal - descontoConvenio).toFixed(2));
+  const total = Math.max(0, Number((totalBase - descExtraNum).toFixed(2)));
 
+  /** Finalizar saída */
   async function handleFechar() {
     try {
       setFechando(true);
-
       const user_id = await getUserId();
       if (!user_id) {
         Alert.alert("Erro", "Usuário não identificado.");
         return;
       }
 
+      const payload = {
+        user_id,
+        forma_pagamento: formaPagamento,
+        ...(convenioId ? { convenio_id: convenioId } : {}),
+        // desconto_extra não está sendo persistido no backend (mantido local)
+      };
+
       const resp = await api(`/api/estacionamento/${ticket?._id}/saida`, {
         method: "PATCH",
-        body: {
-          user_id,
-          forma_pagamento: formaPagamento,
-          ...(convenioId ? { convenio_id: convenioId } : {}),
-        },
+        body: payload,
       });
 
       setFechamento(resp?.ticket || null);
@@ -109,7 +180,6 @@ export default function SaidaScreen({ route, navigation }) {
         `Minutos: ${min}\nValor: R$ ${Number(val).toFixed(2)}`
       );
 
-      // volta para a busca mantendo esta tela no histórico (para gerar PDF se quiser)
       navigation.reset({
         index: 0,
         routes: [{ name: "BuscaPlaca" }],
@@ -121,48 +191,35 @@ export default function SaidaScreen({ route, navigation }) {
     }
   }
 
-  function formatBRL(v) {
-    return `R$ ${Number(v || 0).toFixed(2)}`;
-  }
-
-  function horaBR(date) {
-    if (!date) return "-";
-    const d = new Date(date);
-    return d.toLocaleTimeString("pt-BR", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  function dataHoraBR(date) {
-    if (!date) return "-";
-    const d = new Date(date);
-    return d.toLocaleString("pt-BR");
-  }
-
+  /** Comprovante (PDF) */
   async function gerarComprovante() {
     try {
-      // dados do ticket (se já fechou usamos os oficiais do backend)
+      // Usa o ticket fechado se já houver, senão usa o ticket e o resumo atual
       const t = fechamento || ticket;
 
       const entrada = t?.hora_entrada;
       const saida = fechamento?.hora_saida || new Date().toISOString();
 
       const minutosCalc = fechamento?.minutos_total ?? minutos;
-      const tarifaCalc = Number(t?.tarifa_por_minuto || tarifa);
-      const subtotalCalc = Number((minutosCalc * tarifaCalc).toFixed(2));
+      const tarifaTexto =
+        fechamento?.tarifa_label || resumo?.tarifa_label || tarifaLabel;
+
+      const subtotalCalc =
+        fechamento?.valor_bruto ?? resumo?.subtotal ?? subtotalFallback;
 
       const convenioNome =
-        fechamento?.convenio_aplicado?.nome || (conv ? conv.nome : "Nenhum");
+        fechamento?.convenio_aplicado?.nome ||
+        (convSel ? convSel.nome : "Nenhum");
 
       const descontoPct =
         fechamento?.convenio_aplicado?.desconto_percentual ??
-        Number(conv?.desconto_percentual || 0);
+        Number(convSel?.desconto_percentual || 0);
 
-      const descontoConvCalc = Number(
-        ((subtotalCalc * descontoPct) / 100).toFixed(2)
-      );
-      const descontoExtraCalc = descExtraNum; // apenas local (backend atual não recebe)
+      const descontoConvCalc =
+        fechamento?.desconto_convenio ??
+        Number(((subtotalCalc * (descontoPct || 0)) / 100).toFixed(2));
+
+      const descontoExtraCalc = descExtraNum; // local
 
       const totalCalc =
         fechamento?.valor_final ??
@@ -198,7 +255,7 @@ export default function SaidaScreen({ route, navigation }) {
           <div class="row"><b>Entrada:</b> ${dataHoraBR(entrada)}</div>
           <div class="row"><b>Saída:</b> ${dataHoraBR(saida)}</div>
           <div class="row"><b>Permanência:</b> ${minutosCalc} min</div>
-          <div class="row"><b>Tarifa:</b> ${formatBRL(tarifaCalc)} / min</div>
+          <div class="row"><b>Tarifa aplicada:</b> ${tarifaTexto || "-"}</div>
           <hr/>
           <div class="block">
             <div class="row"><b>Subtotal:</b> ${formatBRL(subtotalCalc)}</div>
@@ -221,12 +278,8 @@ export default function SaidaScreen({ route, navigation }) {
       </html>
       `;
 
-      const { uri } = await Print.printToFileAsync({
-        html,
-        base64: false,
-      });
+      const { uri } = await Print.printToFileAsync({ html, base64: false });
 
-      // Compartilhar / enviar
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, {
           dialogTitle: "Compartilhar comprovante",
@@ -234,7 +287,6 @@ export default function SaidaScreen({ route, navigation }) {
           UTI: "com.adobe.pdf",
         });
       } else {
-        // iOS sem Sharing disponível: abre o print nativo como fallback
         if (Platform.OS === "ios") {
           await Print.printAsync({ html });
         } else {
@@ -267,9 +319,8 @@ export default function SaidaScreen({ route, navigation }) {
           ? new Date(ticket.hora_entrada).toLocaleString("pt-BR")
           : "-"}
       </Text>
-      <Text style={{ marginBottom: 6 }}>Permanência: {minutos} min</Text>
 
-      {/* Resumo financeiro */}
+      {/* Resumo / valores */}
       <View
         style={{
           backgroundColor: "#f7f9fc",
@@ -279,24 +330,39 @@ export default function SaidaScreen({ route, navigation }) {
           marginBottom: 12,
         }}
       >
-        <Text>Tarifa (R$/min): {tarifa.toFixed(2)}</Text>
-        <Text>Subtotal: {formatBRL(subtotal)}</Text>
-        <Text>
-          Convênio:{" "}
-          {conv
-            ? `${conv.nome} (${Number(conv.desconto_percentual)}% off)`
-            : "Nenhum"}
-        </Text>
-        <Text>Desconto convênio: {formatBRL(descConv)}</Text>
-        <Text>Desconto extra: {formatBRL(descExtraNum)}</Text>
-        <Text style={{ marginTop: 6, fontSize: 18, fontWeight: "700" }}>
-          Total a pagar: {formatBRL(total)}
-        </Text>
+        {carregandoResumo ? (
+          <ActivityIndicator />
+        ) : (
+          <>
+            {erroResumo ? (
+              <Text style={{ color: "#b00", marginBottom: 6 }}>
+                {erroResumo}
+              </Text>
+            ) : null}
+
+            <Text>Permanência: {minutos} min</Text>
+            <Text>Tarifa aplicada: {tarifaLabel}</Text>
+            <Text>Subtotal: {formatBRL(subtotal)}</Text>
+            <Text>
+              Convênio:{" "}
+              {convSel
+                ? `${convSel.nome} (${Number(
+                    convSel.desconto_percentual
+                  )}% off)`
+                : "Nenhum"}
+            </Text>
+            <Text>Desconto convênio: {formatBRL(descontoConvenio)}</Text>
+            <Text>Desconto extra: {formatBRL(descExtraNum)}</Text>
+            <Text style={{ marginTop: 6, fontSize: 18, fontWeight: "700" }}>
+              Total a pagar: {formatBRL(total)}
+            </Text>
+          </>
+        )}
       </View>
 
       {/* Convênio */}
       <Text style={{ fontWeight: "600", marginBottom: 6 }}>Convênio</Text>
-      {loading ? (
+      {loadingInit ? (
         <ActivityIndicator />
       ) : (
         <View
@@ -390,10 +456,7 @@ export default function SaidaScreen({ route, navigation }) {
         }}
       />
 
-      <Text style={{ fontSize: 22, fontWeight: "700", marginVertical: 14 }}>
-        Valor parcial: {formatBRL(subtotal)}
-      </Text>
-
+      {/* Botões */}
       <View style={{ flexDirection: "row", gap: 12 }}>
         <TouchableOpacity
           onPress={gerarComprovante}
@@ -412,14 +475,14 @@ export default function SaidaScreen({ route, navigation }) {
 
         <TouchableOpacity
           onPress={handleFechar}
-          disabled={fechando}
+          disabled={fechando || carregandoResumo}
           style={{
             flex: 1,
             backgroundColor: "#1976ed",
             padding: 14,
             borderRadius: 10,
             alignItems: "center",
-            opacity: fechando ? 0.7 : 1,
+            opacity: fechando || carregandoResumo ? 0.7 : 1,
           }}
         >
           <Text style={{ color: "#fff", fontWeight: "700" }}>
