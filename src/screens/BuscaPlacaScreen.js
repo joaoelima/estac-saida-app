@@ -8,7 +8,7 @@ import {
   Alert,
   ActivityIndicator,
 } from "react-native";
-import { estacionamentos } from "../services/api";
+import { estacionamentos, getUserId } from "../services/api";
 
 function normalizaPlaca(txt = "") {
   return String(txt)
@@ -30,7 +30,15 @@ export default function BuscaPlacaScreen({ navigation }) {
 
     setLoading(true);
     try {
-      const ticket = await estacionamentos.getByPlaca(p);
+      const user_id = await getUserId();
+      if (!user_id) {
+        Alert.alert("Erro", "Usuário não identificado.");
+        return;
+      }
+
+      // Passa também o user_id na chamada
+      const ticket = await estacionamentos.getByPlaca(p, { user_id });
+
       // NOME DA ROTA EXISTENTE NO App.js
       navigation.navigate("Saida", { ticket });
     } catch (err) {
