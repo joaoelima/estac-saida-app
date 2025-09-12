@@ -57,7 +57,9 @@ export const estacionamentos = {
     const p = String(placa)
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "");
-    return apiGet(`/api/estacionamento/por-placa`, { placa: p, user_id });
+    return apiGet(`/api/estacionamento/placa/${encodeURIComponent(p)}`, {
+      user_id,
+    });
   },
 
   async getAbertos() {
