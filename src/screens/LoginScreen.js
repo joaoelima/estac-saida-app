@@ -7,6 +7,7 @@ export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [loading, setLoading] = useState(false);
+  const [mostrarSenha, setMostrarSenha] = useState(false); // 👈 controla a visibilidade da senha
 
   async function onEntrar() {
     try {
@@ -16,8 +17,7 @@ export default function LoginScreen({ navigation }) {
         return;
       }
       await login(email.trim(), senha);
-      // NOME DA ROTA EXISTENTE NO App.js
-      navigation.replace("BuscaPlaca");
+      navigation.replace("BuscaPlaca"); // rota que já existe no App.js
     } catch (e) {
       Alert.alert("Erro no login", String(e?.message || e));
     } finally {
@@ -48,19 +48,37 @@ export default function LoginScreen({ navigation }) {
       />
 
       <Text style={{ marginBottom: 8, fontWeight: "600" }}>Senha</Text>
-      <TextInput
-        value={senha}
-        onChangeText={setSenha}
-        secureTextEntry
-        placeholder="••••••••"
+      <View
         style={{
+          flexDirection: "row",
+          alignItems: "center",
           borderWidth: 1,
           borderColor: "#ccc",
           borderRadius: 10,
-          padding: 12,
           marginBottom: 16,
         }}
-      />
+      >
+        <TextInput
+          value={senha}
+          onChangeText={setSenha}
+          secureTextEntry={!mostrarSenha} // 👈 alterna senha visível/oculta
+          placeholder="••••••••"
+          style={{
+            flex: 1,
+            padding: 12,
+          }}
+        />
+        <TouchableOpacity
+          onPress={() => setMostrarSenha((v) => !v)}
+          style={{ paddingHorizontal: 12 }}
+        >
+          <Icon
+            name={mostrarSenha ? "eye-off" : "eye"}
+            size={22}
+            color="#333"
+          />
+        </TouchableOpacity>
+      </View>
 
       <TouchableOpacity
         onPress={onEntrar}
