@@ -1,13 +1,13 @@
-// src/screens/LoginScreen.js
 import React, { useState } from "react";
 import { View, Text, TextInput, TouchableOpacity, Alert } from "react-native";
+import { Ionicons } from "@expo/vector-icons"; // 👈 certo no Expo
 import { login } from "../services/auth";
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false); // 👈 precisa existir
   const [loading, setLoading] = useState(false);
-  const [mostrarSenha, setMostrarSenha] = useState(false); // 👈 controla a visibilidade da senha
 
   async function onEntrar() {
     try {
@@ -17,7 +17,7 @@ export default function LoginScreen({ navigation }) {
         return;
       }
       await login(email.trim(), senha);
-      navigation.replace("BuscaPlaca"); // rota que já existe no App.js
+      navigation.replace("BuscaPlaca");
     } catch (e) {
       Alert.alert("Erro no login", String(e?.message || e));
     } finally {
@@ -61,18 +61,15 @@ export default function LoginScreen({ navigation }) {
         <TextInput
           value={senha}
           onChangeText={setSenha}
-          secureTextEntry={!mostrarSenha} // 👈 alterna senha visível/oculta
+          secureTextEntry={!mostrarSenha} // alterna visibilidade
           placeholder="••••••••"
-          style={{
-            flex: 1,
-            padding: 12,
-          }}
+          style={{ flex: 1, padding: 12 }}
         />
         <TouchableOpacity
           onPress={() => setMostrarSenha((v) => !v)}
-          style={{ paddingHorizontal: 12 }}
+          style={{ padding: 12 }}
         >
-          <Icon
+          <Ionicons
             name={mostrarSenha ? "eye-off" : "eye"}
             size={22}
             color="#333"
